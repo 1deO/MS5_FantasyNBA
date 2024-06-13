@@ -1,0 +1,105 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_validate
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load the dataset
+file_path = '/Users/raxhel/Downloads/games_details_new.csv' 
+games_details = pd.read_csv(file_path)
+
+# Create the fantasy points column using the latest formula
+games_details['FantasyPoints'] = (
+    games_details['PTS'] +
+    1.5 * games_details['AST'] +
+    1.25 * games_details['REB'] +
+    2 * games_details['STL'] +
+    2 * games_details['BLK'] -
+    0.5 * games_details['TO']
+)
+
+# Function to convert minutes to a float value
+def convert_min_to_float(x):
+    if isinstance(x, str):
+        try:
+            mins = int(x.split(':')[0])
+            secs = int(x.split(':')[1])
+            return mins + secs / 60
+        except Exception as e:
+            print(f"Error converting {x}: {e}")
+            return np.nan
+    elif isinstance(x, float):
+        return x
+    else:
+        return np.nan
+
+# Apply the conversion function to the MIN column
+games_details['MIN_float'] = games_details['MIN'].apply(convert_min_to_float)
+
+# Create additional features based on existing data
+games_details['FGM_per_min'] = games_details['FGM'] / games_details['MIN_float']
+games_details['FGA_per_min'] = games_details['FGA'] / games_details['MIN_float']
+games_details['FTM_per_min'] = games_details['FTM'] / games_details['MIN_float']
+games_details['FTA_per_min'] = games_details['FTA'] / games_details['MIN_float']
+games_details['OREB_per_min'] = games_details['OREB'] / games_details['MIN_float']
+games_details['DREB_per_min'] = games_details['DREB'] / games_details['MIN_float']
+
+# Remove rows with NaN values
+games_details = games_details.dropna(subset=['MIN_float', 'FGM_per_min', 'FGA_per_min', 'FTM_per_min', 'FTA_per_min', 'OREB_per_min', 'DREB_per_min'])
+
+# Select features for the model
+features = [
+    'PTS', 'AST', 'REB', 'STL', 'BLK', 'TO', 
+    'FGM_per_min', 'FGA_per_min', 'FTM_per_min', 
+    'FTA_per_min', 'OREB_per_min', 'DREB_per_min'
+]
+X = games_details[features]
+y = games_details['FantasyPoints']
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4)
+
+# Build and train the linear regression model
+linear_regressor = LinearRegression()
+linear_regressor.fit(X_train, y_train)
+
+# Evaluate the model using cross-validation
+linear_regression_validation = cross_validate(linear_regressor, X_train, y_train, cv=5, return_train_score=True, return_estimator=True)
+
+# Make predictions on the test set
+linear_regression_predictions = linear_regressor.predict(X_test)
+
+# Calculate the mean squared error (MSE) and R-squared (R^2) value
+linear_regression_mse = mean_squared_error(y_test, linear_regression_predictions)
+linear_regression_r2 = r2_score(y_test, linear_regression_predictions)
+
+# Display the results
+print(f'Mean Squared Error (MSE): {linear_regression_mse}')
+print(f'R-squared (R^2): {linear_regression_r2}')
+
+# Assess the importance of predictors
+importance = pd.DataFrame({
+    'Feature': features,
+    'Importance': linear_regressor.coef_
+}).sort_values(by='Importance', ascending=False)
+print(importance)
+
+# Plot the predicted values vs. actual values
+plt.figure(figsize=(10, 6))
+plt.scatter(y_test, linear_regression_predictions, alpha=0.3, color='blue')
+plt.plot([y.min(), y.max()], [y.min(), y.max()], 'k--', lw=2)
+plt.xlabel('Actual Fantasy Points')
+plt.ylabel('Predicted Fantasy Points')
+plt.title('Actual vs. Predicted Fantasy Points')
+plt.show()
+
+# Plot the residuals
+plt.figure(figsize=(10, 6))
+plt.scatter(linear_regression_predictions, y_test - linear_regression_predictions, alpha=0.3, color='red')
+plt.hlines(0, linear_regression_predictions.min(), linear_regression_predictions.max(), colors='black', linestyles='dashed')
+plt.xlabel('Predicted Fantasy Points')
+plt.ylabel('Residuals')
+plt.title('Residuals of Linear Regression Predictions')
+plt.show()
