@@ -1,3 +1,0 @@
-Henry
-
-print("Hello, World!")
