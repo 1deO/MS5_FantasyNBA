@@ -18,9 +18,10 @@ def calculate_fantasy_points(row):
 def convert_min_to_float(x):
     if isinstance(x, str):
         try:
+            # 处理格式为 "xx.000000:yy" 的情况
             parts = x.split(':')
             if len(parts) == 2:
-                mins = int(parts[0])
+                mins = float(parts[0])
                 secs = int(parts[1])
                 return mins + secs / 60
             else:
