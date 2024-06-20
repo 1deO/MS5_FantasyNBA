@@ -218,7 +218,7 @@ salaries = dict(zip(indices, nba_salaries.Salary))
     #if np.isnan(salaries[i]) or np.isinf(salaries[i]):
         #print(f"NaN or Inf found in salaries for {i}")
 
-S = 150000000
+S = 18000000  # 预算限制
 m = gp.Model()
 
 y = m.addVars(nba_salaries['Player Name'], vtype=gp.GRB.BINARY, name="y")
@@ -229,23 +229,36 @@ m.setObjective(gp.quicksum(points[i] * y[i] for i in indices), gp.GRB.MAXIMIZE)
 # 增加预算约束
 m.addConstr(gp.quicksum(salaries[i] * y[i] for i in indices) <= S, name="salary")
 
-# 增加每个位置的约束，确保每个位置都选一名球员
-positions = ['PG', 'SG', 'SF', 'PF', 'C']
+# 增加每个位置的约束，确保每个位置至少选一名球员，并确保从四个位置中选三个位置
+positions = ['PG', 'SG', 'PF', 'C']
+position_vars = {pos: m.addVar(vtype=gp.GRB.BINARY, name=f"position_{pos}") for pos in positions}
+
+# 确保每个位置至少有一名球员
 for pos in positions:
-    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) == 1, name=pos)
+    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) >= position_vars[pos], name=f"min_{pos}")
+
+# 确保从四个位置中选三个位置
+m.addConstr(gp.quicksum(position_vars[pos] for pos in positions) == 3, name="select_3_positions")
+
+# 确保每个位置最多有一个球员
+for pos in positions:
+    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) <= 1, name=f"max_{pos}")
+
+# 确保至少选择两名SF球员
+m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == 'SF') >= 2, name='SF')
 
 # 增加球员数量限制
-m.addConstr(gp.quicksum(y[i] for i in indices) == 5, name="max_players")
+m.addConstr(gp.quicksum(y[i] for i in indices) <= 5, name="max_players")
 
 # 优化模型
 m.optimize()
 
 # 检查模型状态并输出结果
 if m.status == gp.GRB.OPTIMAL:
-    selected_players = [v.varName for v in m.getVars() if v.x > 0]
+    selected_players = [v.varName for v in m.getVars() if v.x > 0 and v.varName.startswith('y')]
     print(f"Selected Players: {selected_players}")
     
-    # 打印被选中的五名球员
+    # 打印被选中的球员
     for player in selected_players:
         player_name = player.split('[')[-1][:-1]  # 获取球员名字
         player_data = nba_salaries[nba_salaries['Player Name'] == player_name]
