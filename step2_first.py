@@ -6,9 +6,10 @@ from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
+import gurobipy as gp 
 
 # Load the dataset
-file_path = '/Users/raxhel/Desktop/games_details_new.csv'
+file_path = 'games_details.csv'
 games_details = pd.read_csv(file_path)
 
 # 使用最新公式创建梦幻分数列
@@ -163,7 +164,7 @@ plt.title('ACF of Residuals')
 plt.show()
 
 # 加載NBA薪水數據
-nba_salaries_path = '/Users/raxhel/Desktop/nba_salaries.csv'
+nba_salaries_path = 'nba_salaries.csv'
 nba_salaries = pd.read_csv(nba_salaries_path)
 player_list = list(nba_salaries['Player Name'].unique())
 
@@ -184,4 +185,70 @@ nba_salaries['Points/Salary Ratio'] = 1000 * nba_salaries['PredictedFantasyPoint
 print(nba_salaries.sort_values(by='PredictedFantasyPoints', ascending=False).head(5))
 
 # 保存結果到CSV文件
-nba_salaries.to_csv('/Users/raxhel/Downloads/nba_salaries_with_predictions.csv', index=False)
+nba_salaries.to_csv('nba_salaries_with_predictions.csv', index=False)
+
+# Check for NaN or Inf in 'PredictedFantasyPoints' and 'Salary'
+print(nba_salaries.columns)
+# 設定 pandas 顯示選項，以顯示所有行
+pd.set_option('display.max_rows', None)
+
+# 印出 DataFrame，不省略任何資料
+#print(nba_salaries[['Player Name', 'PredictedFantasyPoints', 'Salary']])
+
+# 刪除包含空值的行並保存修改
+nba_salaries.dropna(subset=['Player Name', 'PredictedFantasyPoints', 'Salary'], inplace=True)
+
+# 印出清理後的 DataFrame
+print(nba_salaries[['Player Name', 'PredictedFantasyPoints', 'Salary']])
+
+#print(nba_salaries[['PredictedFantasyPoints', 'Salary']].isnull().any())
+#print((nba_salaries[['PredictedFantasyPoints', 'Salary']] == np.inf).any())
+
+# Filter out rows where 'PredictedFantasyPoints' or 'Salary' is NaN or Inf
+#nba_salaries = nba_salaries.replace([np.inf, -np.inf], np.nan).dropna(subset=['PredictedFantasyPoints', 'Salary'])
+
+indices = nba_salaries['Player Name']
+points = dict(zip(indices, nba_salaries.PredictedFantasyPoints))
+salaries = dict(zip(indices, nba_salaries.Salary))
+
+# Debugging: Check for NaN or Inf in 'points' and 'salaries'
+#for i in indices:
+    #if np.isnan(points[i]) or np.isinf(points[i]):
+        #print(f"NaN or Inf found in points for {i}")
+    #if np.isnan(salaries[i]) or np.isinf(salaries[i]):
+        #print(f"NaN or Inf found in salaries for {i}")
+
+S = 150000000
+m = gp.Model()
+
+y = m.addVars(nba_salaries['Player Name'], vtype=gp.GRB.BINARY, name="y")
+
+# 設定目標函數：最大化梦幻分数
+m.setObjective(gp.quicksum(points[i] * y[i] for i in indices), gp.GRB.MAXIMIZE)
+
+# 增加预算约束
+m.addConstr(gp.quicksum(salaries[i] * y[i] for i in indices) <= S, name="salary")
+
+# 增加每个位置的约束，确保每个位置都选一名球员
+positions = ['PG', 'SG', 'SF', 'PF', 'C']
+for pos in positions:
+    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) == 1, name=pos)
+
+# 增加球员数量限制
+m.addConstr(gp.quicksum(y[i] for i in indices) == 5, name="max_players")
+
+# 优化模型
+m.optimize()
+
+# 检查模型状态并输出结果
+if m.status == gp.GRB.OPTIMAL:
+    selected_players = [v.varName for v in m.getVars() if v.x > 0]
+    print(f"Selected Players: {selected_players}")
+    
+    # 打印被选中的五名球员
+    for player in selected_players:
+        player_name = player.split('[')[-1][:-1]  # 获取球员名字
+        player_data = nba_salaries[nba_salaries['Player Name'] == player_name]
+        print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
+else:
+    print("The model is infeasible; no optimal solution found.")
