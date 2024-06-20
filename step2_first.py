@@ -291,3 +291,25 @@ player_scores.to_csv(output_file_path, index=False)
 # 打印结果数据框
 print(player_scores)
 
+import matplotlib.pyplot as plt
+
+# 计算Fantasy Score与实际得分平均值的差值
+nba_scores['Fantasy_Score'] = nba_scores['PTS']  # 假设Fantasy Score是与PTS相同的分数
+average_points = player_scores.set_index('PLAYER_NAME')['Average_Points']
+nba_scores['Score_Difference'] = nba_scores.apply(lambda row: row['Fantasy_Score'] - average_points[row['PLAYER_NAME']], axis=1)
+
+# 绘制散点图并保存
+plt.figure(figsize=(14, 8))
+plt.scatter(nba_scores['PLAYER_NAME'], nba_scores['Score_Difference'], alpha=0.5)
+plt.xlabel('Player Name')
+plt.ylabel('Fantasy Score - Average Points')
+plt.title('Difference Between Fantasy Score and Average Points')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.savefig('fantasy_score_vs_avg_points.png')
+plt.close()
+
+# 保存结果数据框
+#output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
+#nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
+
