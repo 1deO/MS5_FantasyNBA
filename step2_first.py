@@ -14,7 +14,7 @@ games_details = pd.read_csv(file_path)
 
 # 使用最新公式创建梦幻分数列
 def calculate_fantasy_points(row):
-    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 1.2) + (row['AST'] * 1.5) + (row['STL'] * 3) + (row['BLK'] * 3) - (row['TO'] * 1) + (row['MIN_float'] * 0.1) + (row['FGM'] * 1) + (row['FGA'] * -0.5) + (row['FG_PCT'] * 2) + (row['FG3M'] * 1.5) + (row['FG3A'] * -0.5) + (row['FG3_PCT'] * 2) + (row['FTM'] * 1) + (row['FTA'] * -0.5) + (row['FT_PCT'] * 2) + (row['OREB'] * 1.5) + (row['DREB'] * 1.5) + (row['PF'] * -0.5) + (row['PLUS_MINUS'] * 0.2)
+    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 0.5)+ (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.2) - (row['TO'] * 1)  + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3)-  (row['PF'] * 3)
     return fantasy_points
 
 # 将分钟转换为浮点值的函数
@@ -265,3 +265,29 @@ if m.status == gp.GRB.OPTIMAL:
         print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
 else:
     print("The model is infeasible; no optimal solution found.")
+
+# Assume we have the residuals from the regression model
+# For demonstration, let's generate some dummy residuals based on the linear regression model
+#data = pd.DataFrame()
+#data['residuals'] = nba_salaries['PredictedFantasyPoints'] - linear_regressor.predict(X)
+
+# Calculate LSig = ln(squared residuals)
+#data['LSig'] = np.log(data['residuals'] ** 2)
+
+
+# 读取上传的CSV文件
+file_path = '2023score.csv'
+nba_scores = pd.read_csv(file_path)
+
+# 根据球员姓名加总分数，并计算平均分数
+player_scores = nba_scores.groupby('PLAYER_NAME')['PTS'].agg(['sum', 'count']).reset_index()
+player_scores.rename(columns={'sum': 'Total_Points', 'count': 'Games_Played'}, inplace=True)
+player_scores['Average_Points'] = player_scores['Total_Points'] / player_scores['Games_Played']
+
+# 保存结果到新的CSV文件
+output_file_path = '2023_player_scores.csv'
+player_scores.to_csv(output_file_path, index=False)
+
+# 打印结果数据框
+print(player_scores)
+
