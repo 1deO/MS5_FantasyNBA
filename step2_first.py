@@ -14,7 +14,7 @@ games_details = pd.read_csv(file_path)
 
 # 使用最新公式创建梦幻分数列
 def calculate_fantasy_points(row):
-    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 0.5) + (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.2) - (row['TO'] * 1) + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3) - (row['PF'] * 3)
+    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 1) + (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.5) - (row['TO'] * 1) + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3) - (row['PF'] * 3)
     return fantasy_points
 
 # 将分钟转换为浮点值的函数
@@ -87,9 +87,9 @@ features = [
     'moving_FTA_per_min', 'moving_OREB_per_min', 'moving_DREB_per_min'
 ]
 X = forecasting_data[features]
-y = forecasting_data['moving_FantasyPoints']
+y = forecasting_data['FantasyPoints']
 print(f"Total number of games_details[features]: {len(forecasting_data[features])}")
-print(f"Total number of games_details['moving_FantasyPoints']: {len(forecasting_data['moving_FantasyPoints'])}")
+print(f"Total number of games_details['FantasyPoints']: {len(forecasting_data['FantasyPoints'])}")
 print(y)
 
 # 將數據集拆分為訓練集和測試集
@@ -296,7 +296,7 @@ m.optimize()
 if m.status == gp.GRB.OPTIMAL:
     selected_players = [v.varName for v in m.getVars() if v.x > 0 and v.varName.startswith('y')]
     print(f"Selected Players: {selected_players}")
-    
+
     # 打印被选中的球员
     for player in selected_players:
         player_name = player.split('[')[-1][:-1]  # 获取球员名字
@@ -343,29 +343,6 @@ plt.close()
 #output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
 #nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
 
-#Step4 start
-# Assume we have the residuals from the regression model
-# For demonstration, let's generate some dummy residuals based on the linear regression model
-# 對測試集進行預測
-
-#第1步: 使用普通最小二乘法進行線性回歸
-#X = games_details[features]
-#y = games_details['moving_FantasyPoints']
-
-#linear_regressor = LinearRegression()
-#linear_regressor.fit(X, y)
-
-#linear_regression_predictions = linear_regressor.predict(X)
-#results = pd.DataFrame({
-    #'Player Name': games_details['PLAYER_NAME'],
-    #'Predicted Score': linear_regression_predictions,
-    #'Actual Score': games_details['PLAYER_NAME']
-#})
-
-# 打印前 10 个球员的姓名和他们的预测分数
-#print("Player Names and Predicted Scores:")
-#print(results.head(10))
-
 #Start
 data = pd.DataFrame()
 data['residuals']  = optimization_dataset['PTS'] - optimization_dataset['PredictedFantasyPoints']
@@ -402,4 +379,3 @@ for i in range(S):
 simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
 print(optimization_dataset['PredictedFantasyPoints'][:10])
 print(simulated_scores[:10])
-
