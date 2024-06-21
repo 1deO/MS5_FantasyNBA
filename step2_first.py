@@ -43,6 +43,7 @@ games_details['MIN_float'] = games_details['MIN'].apply(convert_min_to_float)
 games_details['FantasyPoints'] = games_details.apply(calculate_fantasy_points, axis=1)
 
 print(games_details.head())
+
 # 基于现有数据创建附加特征
 games_details['FGM_per_min'] = games_details['FGM'] / games_details['MIN_float']
 games_details['FGA_per_min'] = games_details['FGA'] / games_details['MIN_float']
@@ -184,6 +185,10 @@ print(optimization_dataset[['PLAYER_NAME', 'PredictedFantasyPoints']].head())
 # 加載NBA薪水數據
 nba_salaries_path = 'nba_salaries.csv'
 nba_salaries = pd.read_csv(nba_salaries_path)
+
+# 加載NBA薪水數據
+nba_salaries_path = 'nba_salaries.csv'
+nba_salaries = pd.read_csv(nba_salaries_path)
 player_list = list(nba_salaries['Player Name'].unique())
 print(player_list)
 print(len(player_list))
@@ -215,11 +220,16 @@ players_salaries = players_salaries.dropna(subset=['Salary'])
 # 打印结果
 print(players_salaries[['Player Name', 'Salary']])
 
-# 合併預測的夢幻分數和薪水數據
-nba_salaries = nba_salaries.merge(optimization_dataset[['PLAYER_NAME', 'PredictedFantasyPoints']], left_on='Player Name', right_on='PLAYER_NAME', how='left')
+# 合併預測的夢幻分數和薪水數據，加入 Position 欄位
+nba_salaries = nba_salaries.merge(
+    optimization_dataset[['PLAYER_NAME', 'PredictedFantasyPoints']],
+    left_on='Player Name',
+    right_on='PLAYER_NAME',
+    how='left'
+)
 
-# 將每個球員的夢幻分數整合成平均值
-nba_salaries_grouped = nba_salaries.groupby('Player Name').agg({
+# 將每個球員的夢幻分數整合成平均值，並加入 Position 欄位
+nba_salaries_grouped = nba_salaries.groupby(['Player Name', 'Position']).agg({
     'PredictedFantasyPoints': 'mean',
     'Salary': 'first'  # 假設每個球員的薪水是一致的
 }).reset_index()
@@ -230,13 +240,14 @@ nba_salaries_grouped['Points/Salary Ratio'] = 1000 * nba_salaries_grouped['Predi
 print(nba_salaries_grouped.sort_values(by='PredictedFantasyPoints', ascending=False).head(5))
 
 # 保存結果到CSV文件
-nba_salaries_grouped.to_csv('nba_salaries_with_predictions.csv', index=False)
+output_file_path = 'nba_salaries_with_predictions.csv'
+nba_salaries_grouped.to_csv(output_file_path, index=False)
 
 # 移除包含空值的行並保存修改
 nba_salaries_grouped.dropna(subset=['Player Name', 'PredictedFantasyPoints', 'Salary'], inplace=True)
 
 # 印出清理後的 DataFrame
-print(nba_salaries_grouped[['Player Name', 'PredictedFantasyPoints', 'Salary']])
+print(nba_salaries_grouped[['Player Name', 'Position', 'PredictedFantasyPoints', 'Salary']])
 
 # 優化部分
 indices = nba_salaries_grouped['Player Name']
@@ -260,20 +271,23 @@ position_vars = {pos: m.addVar(vtype=gp.GRB.BINARY, name=f"position_{pos}") for 
 
 # 确保每个位置至少有一名球员
 for pos in positions:
-    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) >= position_vars[pos], name=f"min_{pos}")
+    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries_grouped.loc[nba_salaries_grouped['Player Name'] == i, 'Position'].values[0] == pos) >= position_vars[pos], name=f"min_{pos}")
 
 # 确保从四个位置中选三个位置
 m.addConstr(gp.quicksum(position_vars[pos] for pos in positions) == 3, name="select_3_positions")
 
 # 确保每个位置最多有一个球员
 for pos in positions:
-    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == pos) <= 1, name=f"max_{pos}")
+    m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries_grouped.loc[nba_salaries_grouped['Player Name'] == i, 'Position'].values[0] == pos) <= 1, name=f"max_{pos}")
 
 # 确保至少选择两名SF球员
-m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries.loc[nba_salaries['Player Name'] == i, 'Position'].values[0] == 'SF') >= 2, name='SF')
+m.addConstr(gp.quicksum(y[i] for i in indices if nba_salaries_grouped.loc[nba_salaries_grouped['Player Name'] == i, 'Position'].values[0] == 'SF') >= 2, name='SF')
 
 # 增加球员数量限制
 m.addConstr(gp.quicksum(y[i] for i in indices) <= 5, name="max_players")
+
+# 确保所选的球员都在打印结果的名单中
+m.addConstr(gp.quicksum(y[i] for i in indices) == gp.quicksum(y[i] for i in players_salaries['Player Name']), name="selected_players")
 
 # 优化模型
 m.optimize()
@@ -290,100 +304,3 @@ if m.status == gp.GRB.OPTIMAL:
         print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
 else:
     print("The model is infeasible; no optimal solution found.")
-# 读取上传的CSV文件
-file_path = '2023score.csv'
-nba_scores = pd.read_csv(file_path)
-
-# 根据球员姓名加总分数，并计算平均分数
-player_scores = nba_scores.groupby('PLAYER_NAME')['PTS'].agg(['sum', 'count']).reset_index()
-player_scores.rename(columns={'sum': 'Total_Points', 'count': 'Games_Played'}, inplace=True)
-player_scores['Average_Points'] = player_scores['Total_Points'] / player_scores['Games_Played']
-
-# 保存结果到新的CSV文件
-output_file_path = '2023_player_scores.csv'
-player_scores.to_csv(output_file_path, index=False)
-
-# 打印结果数据框
-print(player_scores)
-
-import matplotlib.pyplot as plt
-
-# 计算Fantasy Score与实际得分平均值的差值
-nba_scores['Fantasy_Score'] = nba_scores['PTS']  # 假设Fantasy Score是与PTS相同的分数
-average_points = player_scores.set_index('PLAYER_NAME')['Average_Points']
-nba_scores['Score_Difference'] = nba_scores.apply(lambda row: row['Fantasy_Score'] - average_points[row['PLAYER_NAME']], axis=1)
-
-
-# 绘制散点图并保存
-plt.figure(figsize=(14, 8))
-plt.scatter(nba_scores['PLAYER_NAME'], nba_scores['Score_Difference'], alpha=0.5)
-plt.xlabel('Player Name')
-plt.ylabel('Fantasy Score - Average Points')
-plt.title('Difference Between Fantasy Score and Average Points')
-plt.xticks(rotation=90)
-plt.tight_layout()
-plt.savefig('fantasy_score_vs_avg_points.png')
-plt.close()
-
-# 保存结果数据框
-#output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
-#nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
-
-#Step4 start
-# Assume we have the residuals from the regression model
-# For demonstration, let's generate some dummy residuals based on the linear regression model
-# 對測試集進行預測
-
-#第1步: 使用普通最小二乘法進行線性回歸
-X = games_details[features]
-y = games_details['moving_FantasyPoints']
-
-linear_regressor = LinearRegression()
-linear_regressor.fit(X, y)
-
-linear_regression_predictions = linear_regressor.predict(X)
-results = pd.DataFrame({
-    'Player Name': games_details['PLAYER_NAME'],
-    'Predicted Score': linear_regression_predictions,
-    'Actual Score': games_details['PLAYER_NAME']
-})
-
-# 打印前 10 个球员的姓名和他们的预测分数
-print("Player Names and Predicted Scores:")
-print(results.head(10))
-
-data = pd.DataFrame()
-data['residuals'] = residual = y - linear_regression_predictions
-print("Residuals:")
-print(data['residuals'].head(10))
-# Calculate LSig = ln(squared residuals)
-data['LSig'] = np.log(data['residuals'] ** 2)
-print("LSig Residuals:")
-print(data['LSig'].head(10))
-
-# 第2步: 使用LSig进行线性回归并预测
-linear_regressor_lsig = LinearRegression()
-linear_regressor_lsig.fit(X, data['LSig'])
-predicted_lsig = linear_regressor_lsig.predict(X)
-data['Predicted_LSig'] = predicted_lsig
-print("Regression done LSig Residuals:")
-print(data['Predicted_LSig'].head(10))
-
-# 第3步: 假设误差符合正态分布，模拟分数误差
-S = 1000  # 模拟次数
-simulated_scores = []
-
-std_dev = np.sqrt(np.exp(data['Predicted_LSig'] / 2))
-
-for i in range(S):
-    simulated_error = np.random.normal(
-        loc=0,
-        scale=std_dev,
-        size=len(data)
-    )
-    simulated_score = linear_regression_predictions + simulated_error
-    simulated_scores.append(simulated_score)
-
-simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
-print(linear_regression_predictions[:10])
-print(simulated_scores[:10])
