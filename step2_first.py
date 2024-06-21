@@ -304,3 +304,100 @@ if m.status == gp.GRB.OPTIMAL:
         print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
 else:
     print("The model is infeasible; no optimal solution found.")
+# 读取上传的CSV文件
+file_path = '2023score.csv'
+nba_scores = pd.read_csv(file_path)
+
+# 根据球员姓名加总分数，并计算平均分数
+player_scores = nba_scores.groupby('PLAYER_NAME')['PTS'].agg(['sum', 'count']).reset_index()
+player_scores.rename(columns={'sum': 'Total_Points', 'count': 'Games_Played'}, inplace=True)
+player_scores['Average_Points'] = player_scores['Total_Points'] / player_scores['Games_Played']
+
+# 保存结果到新的CSV文件
+output_file_path = '2023_player_scores.csv'
+player_scores.to_csv(output_file_path, index=False)
+
+# 打印结果数据框
+print(player_scores)
+
+import matplotlib.pyplot as plt
+
+# 计算Fantasy Score与实际得分平均值的差值
+nba_scores['Fantasy_Score'] = nba_scores['PTS']  # 假设Fantasy Score是与PTS相同的分数
+average_points = player_scores.set_index('PLAYER_NAME')['Average_Points']
+nba_scores['Score_Difference'] = nba_scores.apply(lambda row: row['Fantasy_Score'] - average_points[row['PLAYER_NAME']], axis=1)
+
+
+# 绘制散点图并保存
+plt.figure(figsize=(14, 8))
+plt.scatter(nba_scores['PLAYER_NAME'], nba_scores['Score_Difference'], alpha=0.5)
+plt.xlabel('Player Name')
+plt.ylabel('Fantasy Score - Average Points')
+plt.title('Difference Between Fantasy Score and Average Points')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.savefig('fantasy_score_vs_avg_points.png')
+plt.close()
+
+# 保存结果数据框
+#output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
+#nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
+
+#Step4 start
+# Assume we have the residuals from the regression model
+# For demonstration, let's generate some dummy residuals based on the linear regression model
+# 對測試集進行預測
+
+#第1步: 使用普通最小二乘法進行線性回歸
+X = games_details[features]
+y = games_details['moving_FantasyPoints']
+
+linear_regressor = LinearRegression()
+linear_regressor.fit(X, y)
+
+linear_regression_predictions = linear_regressor.predict(X)
+results = pd.DataFrame({
+    'Player Name': games_details['PLAYER_NAME'],
+    'Predicted Score': linear_regression_predictions,
+    'Actual Score': games_details['PLAYER_NAME']
+})
+
+# 打印前 10 个球员的姓名和他们的预测分数
+print("Player Names and Predicted Scores:")
+print(results.head(10))
+
+data = pd.DataFrame()
+data['residuals'] = residual = y - linear_regression_predictions
+print("Residuals:")
+print(data['residuals'].head(10))
+# Calculate LSig = ln(squared residuals)
+data['LSig'] = np.log(data['residuals'] ** 2)
+print("LSig Residuals:")
+print(data['LSig'].head(10))
+
+# 第2步: 使用LSig进行线性回归并预测
+linear_regressor_lsig = LinearRegression()
+linear_regressor_lsig.fit(X, data['LSig'])
+predicted_lsig = linear_regressor_lsig.predict(X)
+data['Predicted_LSig'] = predicted_lsig
+print("Regression done LSig Residuals:")
+print(data['Predicted_LSig'].head(10))
+
+# 第3步: 假设误差符合正态分布，模拟分数误差
+S = 1000  # 模拟次数
+simulated_scores = []
+
+std_dev = np.sqrt(np.exp(data['Predicted_LSig'] / 2))
+
+for i in range(S):
+    simulated_error = np.random.normal(
+        loc=0,
+        scale=std_dev,
+        size=len(data)
+    )
+    simulated_score = linear_regression_predictions + simulated_error
+    simulated_scores.append(simulated_score)
+
+simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
+print(linear_regression_predictions[:10])
+print(simulated_scores[:10])
