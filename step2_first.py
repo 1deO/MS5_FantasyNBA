@@ -14,7 +14,7 @@ games_details = pd.read_csv(file_path)
 
 # 使用最新公式创建梦幻分数列
 def calculate_fantasy_points(row):
-    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 0.5) + (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.2) - (row['TO'] * 1) + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3) - (row['PF'] * 3)
+    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 1) + (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.5) - (row['TO'] * 1) + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3) - (row['PF'] * 3)
     return fantasy_points
 
 # 将分钟转换为浮点值的函数
@@ -87,9 +87,9 @@ features = [
     'moving_FTA_per_min', 'moving_OREB_per_min', 'moving_DREB_per_min'
 ]
 X = forecasting_data[features]
-y = forecasting_data['moving_FantasyPoints']
+y = forecasting_data['FantasyPoints']
 print(f"Total number of games_details[features]: {len(forecasting_data[features])}")
-print(f"Total number of games_details['moving_FantasyPoints']: {len(forecasting_data['moving_FantasyPoints'])}")
+print(f"Total number of games_details['FantasyPoints']: {len(forecasting_data['FantasyPoints'])}")
 print(y)
 
 # 將數據集拆分為訓練集和測試集
@@ -350,7 +350,7 @@ plt.close()
 
 #第1步: 使用普通最小二乘法進行線性回歸
 X = games_details[features]
-y = games_details['moving_FantasyPoints']
+y = games_details['FantasyPoints']
 
 linear_regressor = LinearRegression()
 linear_regressor.fit(X, y)
