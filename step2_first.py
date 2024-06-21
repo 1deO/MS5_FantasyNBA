@@ -6,7 +6,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
-import gurobipy as gp 
+import gurobipy as gp
 
 # Load the dataset
 file_path = 'games_details.csv'
@@ -14,7 +14,7 @@ games_details = pd.read_csv(file_path)
 
 # 使用最新公式创建梦幻分数列
 def calculate_fantasy_points(row):
-    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 0.5)+ (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.2) - (row['TO'] * 1)  + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3)-  (row['PF'] * 3)
+    fantasy_points = (row['PTS'] * 1) + (row['REB'] * 0.5) + (row['AST'] * 1.2) + (row['STL'] * 1) + (row['BLK'] * 1.2) - (row['TO'] * 1) + (row['FG3M'] * 0.5) + (row['FGM'] * 0.3) - (row['PF'] * 3)
     return fantasy_points
 
 # 将分钟转换为浮点值的函数
@@ -42,6 +42,7 @@ games_details['MIN_float'] = games_details['MIN'].apply(convert_min_to_float)
 # 计算梦幻分数
 games_details['FantasyPoints'] = games_details.apply(calculate_fantasy_points, axis=1)
 
+print(games_details.head())
 # 基于现有数据创建附加特征
 games_details['FGM_per_min'] = games_details['FGM'] / games_details['MIN_float']
 games_details['FGA_per_min'] = games_details['FGA'] / games_details['MIN_float']
@@ -58,6 +59,7 @@ for column_name in ['PTS', 'AST', 'REB', 'STL', 'BLK', 'TO', 'FGM_per_min', 'FGA
 # 移除包含NaN值的行
 games_details = games_details.dropna(subset=['MIN_float', 'FGM_per_min', 'FGA_per_min', 'FTM_per_min', 'FTA_per_min', 'OREB_per_min', 'DREB_per_min', 'moving_PTS'])
 print(f"Total number of games_details: {len(games_details)}")
+
 # 繪製相關矩陣的熱力圖
 plt.figure(figsize=(15, 8))
 correlation_matrix = games_details[['moving_PTS', 'moving_AST', 'moving_REB', 'moving_STL', 'moving_BLK', 'moving_TO', 'moving_FGM_per_min', 'moving_FGA_per_min', 'moving_FTM_per_min', 'moving_FTA_per_min', 'moving_OREB_per_min', 'moving_DREB_per_min', 'moving_FantasyPoints']].corr()
@@ -75,7 +77,6 @@ plt.legend()
 plt.show()
 
 forecasting_data = games_details[games_details['GAME_DATE_EST'] != '2022-12-22']
-#for model training, we exclude observation on December 25, 2017
 print(forecasting_data.shape)
 
 # 為模型選擇特徵
@@ -86,13 +87,10 @@ features = [
 ]
 X = forecasting_data[features]
 y = forecasting_data['moving_FantasyPoints']
-#print("feature:")
-#print(games_details[features].shape)
 print(f"Total number of games_details[features]: {len(forecasting_data[features])}")
-#print("moving_FantasyPoints:")
-#print(games_details['moving_FantasyPoints'].shape)
 print(f"Total number of games_details['moving_FantasyPoints']: {len(forecasting_data['moving_FantasyPoints'])}")
 print(y)
+
 # 將數據集拆分為訓練集和測試集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4)
 
@@ -106,23 +104,14 @@ linear_regression_validation['test_score']
 
 # 對測試集進行預測
 linear_regression_predictions = linear_regressor.predict(X_test)
+print(f"Predictions: {linear_regression_predictions[:5]}")
 
 print(f"Total number of X_test: {len(X_test)}")
-# 檢查linear_regression_predictions總共有幾筆
 print(f"Total number of predictions: {len(linear_regression_predictions)}")
-# 将球员姓名和预测分数放到一个 DataFrame 中
-print(X_test.head(10))
 
-
-# 打印前 10 个球员的姓名和他们的预测分数
-#print("Player Names and Predicted Scores:")
-#print(results.head(10))
-
-# 計算均方誤差(MSE)和R平方(R^2)值
+# 檢查模型性能
 linear_regression_mse = mean_squared_error(y_test, linear_regression_predictions)
 linear_regression_r2 = r2_score(y_test, linear_regression_predictions)
-
-# 顯示結果
 print(f'均方誤差 (MSE): {linear_regression_mse}')
 print(f'R平方 (R^2): {linear_regression_r2}')
 
@@ -185,15 +174,12 @@ sm.graphics.tsa.plot_acf(y_test - linear_regression_predictions, lags=40)
 plt.title('ACF of Residuals')
 plt.show()
 
-
 LR_final = linear_regressor
 LR_final.fit(X, y)
 
 optimization_dataset = games_details
 optimization_dataset['PredictedFantasyPoints'] = LR_final.predict(games_details[features])
-
-print(optimization_dataset)
-
+print(optimization_dataset[['PLAYER_NAME', 'PredictedFantasyPoints']].head())
 
 # 加載NBA薪水數據
 nba_salaries_path = 'nba_salaries.csv'
@@ -204,61 +190,63 @@ print(len(player_list))
 col = pd.DataFrame()
 print(col)
 
-# 整合玩家數據
-col = pd.DataFrame(columns=['Player Name', 'PredictedFantasyPoints'])
-for player in player_list:
-    optimization_data_per_player = optimization_dataset.loc[(optimization_dataset['PLAYER_NAME'] == player) & (optimization_dataset['GAME_DATE_EST'] == '2022-12-22')]
-    if not optimization_data_per_player.empty:
-        predicted_fantasy_points = optimization_data_per_player['FantasyPoints'].mean()
-        new_row = pd.DataFrame({'Player Name': [player], 'PredictedFantasyPoints': [predicted_fantasy_points]})
-        col = pd.concat([col, new_row], ignore_index=True)
-print(len(col))
-print(col)
+# 加载比赛详情数据
+games_details_path = 'games_details.csv'
+games_details = pd.read_csv(games_details_path)
+
+# 确保比赛日期列是datetime格式
+games_details['GAME_DATE_EST'] = pd.to_datetime(games_details['GAME_DATE_EST'])
+
+# 筛选出在2022-12-20比赛中的球员
+filtered_games_details = games_details[games_details['GAME_DATE_EST'] == '2022-12-22']
+
+# 获取在该日期打球的球员名称
+players_in_game = filtered_games_details['PLAYER_NAME'].unique()
+
+# 创建一个DataFrame来存储结果
+players_df = pd.DataFrame(players_in_game, columns=['Player Name'])
+
+# 合并两个数据集以获取球员薪水
+players_salaries = pd.merge(players_df, nba_salaries, left_on='Player Name', right_on='Player Name', how='left')
+
+# 删除Salary为空值的行
+players_salaries = players_salaries.dropna(subset=['Salary'])
+
+# 打印结果
+print(players_salaries[['Player Name', 'Salary']])
+
 # 合併預測的夢幻分數和薪水數據
-nba_salaries = nba_salaries.merge(col, on='Player Name', how='left')
-nba_salaries['Points/Salary Ratio'] = 1000 * nba_salaries['PredictedFantasyPoints'] / nba_salaries['Salary']
+nba_salaries = nba_salaries.merge(optimization_dataset[['PLAYER_NAME', 'PredictedFantasyPoints']], left_on='Player Name', right_on='PLAYER_NAME', how='left')
+
+# 將每個球員的夢幻分數整合成平均值
+nba_salaries_grouped = nba_salaries.groupby('Player Name').agg({
+    'PredictedFantasyPoints': 'mean',
+    'Salary': 'first'  # 假設每個球員的薪水是一致的
+}).reset_index()
+
+nba_salaries_grouped['Points/Salary Ratio'] = 1000 * nba_salaries_grouped['PredictedFantasyPoints'] / nba_salaries_grouped['Salary']
 
 # 顯示前5名球員的數據
-print(nba_salaries.sort_values(by='PredictedFantasyPoints', ascending=False).head(5))
+print(nba_salaries_grouped.sort_values(by='PredictedFantasyPoints', ascending=False).head(5))
 
 # 保存結果到CSV文件
-nba_salaries.to_csv('nba_salaries_with_predictions.csv', index=False)
+nba_salaries_grouped.to_csv('nba_salaries_with_predictions.csv', index=False)
 
-# Check for NaN or Inf in 'PredictedFantasyPoints' and 'Salary'
-print(nba_salaries.columns)
-# 設定 pandas 顯示選項，以顯示所有行
-pd.set_option('display.max_rows', None)
-
-# 印出 DataFrame，不省略任何資料
-#print(nba_salaries[['Player Name', 'PredictedFantasyPoints', 'Salary']])
-
-# 刪除包含空值的行並保存修改
-nba_salaries.dropna(subset=['Player Name', 'PredictedFantasyPoints', 'Salary'], inplace=True)
+# 移除包含空值的行並保存修改
+nba_salaries_grouped.dropna(subset=['Player Name', 'PredictedFantasyPoints', 'Salary'], inplace=True)
 
 # 印出清理後的 DataFrame
-print(nba_salaries[['Player Name', 'PredictedFantasyPoints', 'Salary']])
+print(nba_salaries_grouped[['Player Name', 'PredictedFantasyPoints', 'Salary']])
 
-#print(nba_salaries[['PredictedFantasyPoints', 'Salary']].isnull().any())
-#print((nba_salaries[['PredictedFantasyPoints', 'Salary']] == np.inf).any())
-
-# Filter out rows where 'PredictedFantasyPoints' or 'Salary' is NaN or Inf
-#nba_salaries = nba_salaries.replace([np.inf, -np.inf], np.nan).dropna(subset=['PredictedFantasyPoints', 'Salary'])
-
-indices = nba_salaries['Player Name']
-points = dict(zip(indices, nba_salaries.PredictedFantasyPoints))
-salaries = dict(zip(indices, nba_salaries.Salary))
-
-# Debugging: Check for NaN or Inf in 'points' and 'salaries'
-#for i in indices:
-    #if np.isnan(points[i]) or np.isinf(points[i]):
-        #print(f"NaN or Inf found in points for {i}")
-    #if np.isnan(salaries[i]) or np.isinf(salaries[i]):
-        #print(f"NaN or Inf found in salaries for {i}")
+# 優化部分
+indices = nba_salaries_grouped['Player Name']
+points = dict(zip(indices, nba_salaries_grouped['PredictedFantasyPoints']))
+salaries = dict(zip(indices, nba_salaries_grouped['Salary']))
 
 S = 18000000  # 预算限制
 m = gp.Model()
 
-y = m.addVars(nba_salaries['Player Name'], vtype=gp.GRB.BINARY, name="y")
+y = m.addVars(nba_salaries_grouped['Player Name'], vtype=gp.GRB.BINARY, name="y")
 
 # 設定目標函數：最大化梦幻分数
 m.setObjective(gp.quicksum(points[i] * y[i] for i in indices), gp.GRB.MAXIMIZE)
@@ -298,12 +286,10 @@ if m.status == gp.GRB.OPTIMAL:
     # 打印被选中的球员
     for player in selected_players:
         player_name = player.split('[')[-1][:-1]  # 获取球员名字
-        player_data = nba_salaries[nba_salaries['Player Name'] == player_name]
+        player_data = nba_salaries_grouped[nba_salaries_grouped['Player Name'] == player_name]
         print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
 else:
     print("The model is infeasible; no optimal solution found.")
-
-
 # 读取上传的CSV文件
 file_path = '2023score.csv'
 nba_scores = pd.read_csv(file_path)
