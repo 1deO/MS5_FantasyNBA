@@ -57,7 +57,7 @@ for column_name in ['PTS', 'AST', 'REB', 'STL', 'BLK', 'TO', 'FGM_per_min', 'FGA
 
 # 移除包含NaN值的行
 games_details = games_details.dropna(subset=['MIN_float', 'FGM_per_min', 'FGA_per_min', 'FTM_per_min', 'FTA_per_min', 'OREB_per_min', 'DREB_per_min', 'moving_PTS'])
-
+print(f"Total number of games_details: {len(games_details)}")
 # 繪製相關矩陣的熱力圖
 plt.figure(figsize=(15, 8))
 correlation_matrix = games_details[['moving_PTS', 'moving_AST', 'moving_REB', 'moving_STL', 'moving_BLK', 'moving_TO', 'moving_FGM_per_min', 'moving_FGA_per_min', 'moving_FTM_per_min', 'moving_FTA_per_min', 'moving_OREB_per_min', 'moving_DREB_per_min', 'moving_FantasyPoints']].corr()
@@ -74,15 +74,25 @@ plt.title('Histogram of Fantasy Points')
 plt.legend()
 plt.show()
 
+forecasting_data = games_details[games_details['GAME_DATE_EST'] != '2022-12-22']
+#for model training, we exclude observation on December 25, 2017
+print(forecasting_data.shape)
+
 # 為模型選擇特徵
 features = [
     'moving_PTS', 'moving_AST', 'moving_REB', 'moving_STL', 'moving_BLK', 'moving_TO',
     'moving_FGM_per_min', 'moving_FGA_per_min', 'moving_FTM_per_min',
     'moving_FTA_per_min', 'moving_OREB_per_min', 'moving_DREB_per_min'
 ]
-X = games_details[features]
-y = games_details['moving_FantasyPoints']
-
+X = forecasting_data[features]
+y = forecasting_data['moving_FantasyPoints']
+#print("feature:")
+#print(games_details[features].shape)
+print(f"Total number of games_details[features]: {len(forecasting_data[features])}")
+#print("moving_FantasyPoints:")
+#print(games_details['moving_FantasyPoints'].shape)
+print(f"Total number of games_details['moving_FantasyPoints']: {len(forecasting_data['moving_FantasyPoints'])}")
+print(y)
 # 將數據集拆分為訓練集和測試集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4)
 
@@ -92,9 +102,21 @@ linear_regressor.fit(X_train, y_train)
 
 # 使用交叉驗證評估模型
 linear_regression_validation = cross_validate(linear_regressor, X_train, y_train, cv=5, return_train_score=True, return_estimator=True)
+linear_regression_validation['test_score']
 
 # 對測試集進行預測
 linear_regression_predictions = linear_regressor.predict(X_test)
+
+print(f"Total number of X_test: {len(X_test)}")
+# 檢查linear_regression_predictions總共有幾筆
+print(f"Total number of predictions: {len(linear_regression_predictions)}")
+# 将球员姓名和预测分数放到一个 DataFrame 中
+print(X_test.head(10))
+
+
+# 打印前 10 个球员的姓名和他们的预测分数
+#print("Player Names and Predicted Scores:")
+#print(results.head(10))
 
 # 計算均方誤差(MSE)和R平方(R^2)值
 linear_regression_mse = mean_squared_error(y_test, linear_regression_predictions)
@@ -163,6 +185,16 @@ sm.graphics.tsa.plot_acf(y_test - linear_regression_predictions, lags=40)
 plt.title('ACF of Residuals')
 plt.show()
 
+
+LR_final = linear_regressor
+LR_final.fit(X, y)
+
+optimization_dataset = games_details
+optimization_dataset['PredictedFantasyPoints'] = LR_final.predict(games_details[features])
+
+print(optimization_dataset)
+
+
 # 加載NBA薪水數據
 nba_salaries_path = 'nba_salaries.csv'
 nba_salaries = pd.read_csv(nba_salaries_path)
@@ -171,12 +203,13 @@ player_list = list(nba_salaries['Player Name'].unique())
 # 整合玩家數據
 col = pd.DataFrame(columns=['Player Name', 'PredictedFantasyPoints'])
 for player in player_list:
-    optimization_data_per_player = games_details.loc[games_details['PLAYER_NAME'] == player]
+    optimization_data_per_player = optimization_dataset.loc[(optimization_dataset['PLAYER_NAME'] == player) & (optimization_dataset['GAME_DATE_EST'] == '2022-12-22')]
     if not optimization_data_per_player.empty:
         predicted_fantasy_points = optimization_data_per_player['FantasyPoints'].mean()
         new_row = pd.DataFrame({'Player Name': [player], 'PredictedFantasyPoints': [predicted_fantasy_points]})
         col = pd.concat([col, new_row], ignore_index=True)
-
+print(len(col))
+print(col)
 # 合併預測的夢幻分數和薪水數據
 nba_salaries = nba_salaries.merge(col, on='Player Name', how='left')
 nba_salaries['Points/Salary Ratio'] = 1000 * nba_salaries['PredictedFantasyPoints'] / nba_salaries['Salary']
@@ -266,14 +299,6 @@ if m.status == gp.GRB.OPTIMAL:
 else:
     print("The model is infeasible; no optimal solution found.")
 
-# Assume we have the residuals from the regression model
-# For demonstration, let's generate some dummy residuals based on the linear regression model
-#data = pd.DataFrame()
-#data['residuals'] = nba_salaries['PredictedFantasyPoints'] - linear_regressor.predict(X)
-
-# Calculate LSig = ln(squared residuals)
-#data['LSig'] = np.log(data['residuals'] ** 2)
-
 
 # 读取上传的CSV文件
 file_path = '2023score.csv'
@@ -298,6 +323,7 @@ nba_scores['Fantasy_Score'] = nba_scores['PTS']  # 假设Fantasy Score是与PTS�
 average_points = player_scores.set_index('PLAYER_NAME')['Average_Points']
 nba_scores['Score_Difference'] = nba_scores.apply(lambda row: row['Fantasy_Score'] - average_points[row['PLAYER_NAME']], axis=1)
 
+
 # 绘制散点图并保存
 plt.figure(figsize=(14, 8))
 plt.scatter(nba_scores['PLAYER_NAME'], nba_scores['Score_Difference'], alpha=0.5)
@@ -313,3 +339,61 @@ plt.close()
 #output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
 #nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
 
+#Step4 start
+# Assume we have the residuals from the regression model
+# For demonstration, let's generate some dummy residuals based on the linear regression model
+# 對測試集進行預測
+
+#第1步: 使用普通最小二乘法進行線性回歸
+X = games_details[features]
+y = games_details['moving_FantasyPoints']
+
+linear_regressor = LinearRegression()
+linear_regressor.fit(X, y)
+
+linear_regression_predictions = linear_regressor.predict(X)
+results = pd.DataFrame({
+    'Player Name': games_details['PLAYER_NAME'],
+    'Predicted Score': linear_regression_predictions,
+    'Actual Score': games_details['PLAYER_NAME']
+})
+
+# 打印前 10 个球员的姓名和他们的预测分数
+print("Player Names and Predicted Scores:")
+print(results.head(10))
+
+data = pd.DataFrame()
+data['residuals'] = residual = y - linear_regression_predictions
+print("Residuals:")
+print(data['residuals'].head(10))
+# Calculate LSig = ln(squared residuals)
+data['LSig'] = np.log(data['residuals'] ** 2)
+print("LSig Residuals:")
+print(data['LSig'].head(10))
+
+# 第2步: 使用LSig进行线性回归并预测
+linear_regressor_lsig = LinearRegression()
+linear_regressor_lsig.fit(X, data['LSig'])
+predicted_lsig = linear_regressor_lsig.predict(X)
+data['Predicted_LSig'] = predicted_lsig
+print("Regression done LSig Residuals:")
+print(data['Predicted_LSig'].head(10))
+
+# 第3步: 假设误差符合正态分布，模拟分数误差
+S = 1000  # 模拟次数
+simulated_scores = []
+
+std_dev = np.sqrt(np.exp(data['Predicted_LSig'] / 2))
+
+for i in range(S):
+    simulated_error = np.random.normal(
+        loc=0,
+        scale=std_dev,
+        size=len(data)
+    )
+    simulated_score = linear_regression_predictions + simulated_error
+    simulated_scores.append(simulated_score)
+
+simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
+print(linear_regression_predictions[:10])
+print(simulated_scores[:10])
