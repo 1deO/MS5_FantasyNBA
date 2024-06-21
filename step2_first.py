@@ -349,25 +349,26 @@ plt.close()
 # 對測試集進行預測
 
 #第1步: 使用普通最小二乘法進行線性回歸
-X = games_details[features]
-y = games_details['moving_FantasyPoints']
+#X = games_details[features]
+#y = games_details['moving_FantasyPoints']
 
-linear_regressor = LinearRegression()
-linear_regressor.fit(X, y)
+#linear_regressor = LinearRegression()
+#linear_regressor.fit(X, y)
 
-linear_regression_predictions = linear_regressor.predict(X)
-results = pd.DataFrame({
-    'Player Name': games_details['PLAYER_NAME'],
-    'Predicted Score': linear_regression_predictions,
-    'Actual Score': games_details['PLAYER_NAME']
-})
+#linear_regression_predictions = linear_regressor.predict(X)
+#results = pd.DataFrame({
+    #'Player Name': games_details['PLAYER_NAME'],
+    #'Predicted Score': linear_regression_predictions,
+    #'Actual Score': games_details['PLAYER_NAME']
+#})
 
 # 打印前 10 个球员的姓名和他们的预测分数
-print("Player Names and Predicted Scores:")
-print(results.head(10))
+#print("Player Names and Predicted Scores:")
+#print(results.head(10))
 
+#Start
 data = pd.DataFrame()
-data['residuals'] = residual = y - linear_regression_predictions
+data['residuals']  = optimization_dataset['PTS'] - optimization_dataset['PredictedFantasyPoints']
 print("Residuals:")
 print(data['residuals'].head(10))
 # Calculate LSig = ln(squared residuals)
@@ -395,9 +396,10 @@ for i in range(S):
         scale=std_dev,
         size=len(data)
     )
-    simulated_score = linear_regression_predictions + simulated_error
+    simulated_score = optimization_dataset['PredictedFantasyPoints'] + simulated_error
     simulated_scores.append(simulated_score)
 
 simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
-print(linear_regression_predictions[:10])
+print(optimization_dataset['PredictedFantasyPoints'][:10])
 print(simulated_scores[:10])
+
