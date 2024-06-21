@@ -199,6 +199,10 @@ print(optimization_dataset)
 nba_salaries_path = 'nba_salaries.csv'
 nba_salaries = pd.read_csv(nba_salaries_path)
 player_list = list(nba_salaries['Player Name'].unique())
+print(player_list)
+print(len(player_list))
+col = pd.DataFrame()
+print(col)
 
 # 整合玩家數據
 col = pd.DataFrame(columns=['Player Name', 'PredictedFantasyPoints'])
