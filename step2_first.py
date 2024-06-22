@@ -254,7 +254,7 @@ indices = nba_salaries_grouped['Player Name']
 points = dict(zip(indices, nba_salaries_grouped['PredictedFantasyPoints']))
 salaries = dict(zip(indices, nba_salaries_grouped['Salary']))
 
-S = 18000000  # 预算限制
+S = 25000000  # 预算限制
 m = gp.Model()
 
 y = m.addVars(nba_salaries_grouped['Player Name'], vtype=gp.GRB.BINARY, name="y")
@@ -289,6 +289,7 @@ m.addConstr(gp.quicksum(y[i] for i in indices) <= 5, name="max_players")
 # 确保所选的球员都在打印结果的名单中
 m.addConstr(gp.quicksum(y[i] for i in indices) == gp.quicksum(y[i] for i in players_salaries['Player Name']), name="selected_players")
 
+m.addConstr(gp.quicksum(points[i] * y[i] for i in indices)>=50)
 # 优化模型
 m.optimize()
 
@@ -297,63 +298,78 @@ if m.status == gp.GRB.OPTIMAL:
     selected_players = [v.varName for v in m.getVars() if v.x > 0 and v.varName.startswith('y')]
     print(f"Selected Players: {selected_players}")
 
-    # 打印被选中的球员
-    for player in selected_players:
-        player_name = player.split('[')[-1][:-1]  # 获取球员名字
-        player_data = nba_salaries_grouped[nba_salaries_grouped['Player Name'] == player_name]
-        print(f"Player: {player_name}, Position: {player_data['Position'].values[0]}, PredictedFantasyPoints: {player_data['PredictedFantasyPoints'].values[0]}, Salary: {player_data['Salary'].values[0]}")
+    selected_player_names = [player.split('[')[-1][:-1] for player in selected_players]  # 获取球员名字
+
+    # 打印被选中的球员并获取预测分数和实际分数
+    predicted_scores = []
+    actual_scores = []
+    for player_name in selected_player_names:
+        player_data_grouped = nba_salaries_grouped[nba_salaries_grouped['Player Name'] == player_name]
+        predicted_score = player_data_grouped['PredictedFantasyPoints'].values[0]
+        predicted_scores.append(predicted_score)
+
+        player_data = nba_salaries[nba_salaries['Player Name'] == player_name]
+        actual_score = games_details[(games_details['PLAYER_NAME'] == player_name) & (games_details['GAME_DATE_EST'] == '2022-12-22')]['PTS'].values[0]
+        actual_scores.append(actual_score)
+
+        print(f"Player: {player_name}, Position: {player_data_grouped['Position'].values[0]}, PredictedFantasyPoints: {predicted_score}, Salary: {player_data_grouped['Salary'].values[0]}")
+
+    # 绘制条形图
+    x = np.arange(len(selected_player_names))  # 球员数量
+    width = 0.35  # 条形图的宽度
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bars1 = ax.bar(x - width/2, predicted_scores, width, label='Predicted Scores')
+    bars2 = ax.bar(x + width/2, actual_scores, width, label='Actual Scores')
+
+    # 添加标签和标题
+    ax.set_xlabel('Player Names')
+    ax.set_ylabel('Scores')
+    ax.set_title('Predicted vs Actual Scores for Selected Players')
+    ax.set_xticks(x)
+    ax.set_xticklabels(selected_player_names)
+    ax.legend()
+
+    # 在每个条形图上添加数值标签
+    for bar in bars1:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+    for bar in bars2:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+
+    plt.show()
 else:
     print("The model is infeasible; no optimal solution found.")
-# 读取上传的CSV文件
-file_path = '2023score.csv'
-nba_scores = pd.read_csv(file_path)
 
-# 根据球员姓名加总分数，并计算平均分数
-player_scores = nba_scores.groupby('PLAYER_NAME')['PTS'].agg(['sum', 'count']).reset_index()
-player_scores.rename(columns={'sum': 'Total_Points', 'count': 'Games_Played'}, inplace=True)
-player_scores['Average_Points'] = player_scores['Total_Points'] / player_scores['Games_Played']
-
-# 保存结果到新的CSV文件
-output_file_path = '2023_player_scores.csv'
-player_scores.to_csv(output_file_path, index=False)
-
-# 打印结果数据框
-print(player_scores)
 
 import matplotlib.pyplot as plt
-
-# 计算Fantasy Score与实际得分平均值的差值
-nba_scores['Fantasy_Score'] = nba_scores['PTS']  # 假设Fantasy Score是与PTS相同的分数
-average_points = player_scores.set_index('PLAYER_NAME')['Average_Points']
-nba_scores['Score_Difference'] = nba_scores.apply(lambda row: row['Fantasy_Score'] - average_points[row['PLAYER_NAME']], axis=1)
-
-
-# 绘制散点图并保存
-plt.figure(figsize=(14, 8))
-plt.scatter(nba_scores['PLAYER_NAME'], nba_scores['Score_Difference'], alpha=0.5)
-plt.xlabel('Player Name')
-plt.ylabel('Fantasy Score - Average Points')
-plt.title('Difference Between Fantasy Score and Average Points')
-plt.xticks(rotation=90)
-plt.tight_layout()
-plt.savefig('fantasy_score_vs_avg_points.png')
-plt.close()
 
 # 保存结果数据框
 #output_file_path = '/mnt/data/2023_player_scores_with_difference.csv'
 #nba_scores &#8203;:citation[oaicite:0]{index=0}&#8203;
 
 #Start
+# 计算残差和 LSig
 data = pd.DataFrame()
 data['residuals']  = optimization_dataset['PTS'] - optimization_dataset['PredictedFantasyPoints']
 print("Residuals:")
 print(data['residuals'].head(10))
+
 # Calculate LSig = ln(squared residuals)
 data['LSig'] = np.log(data['residuals'] ** 2)
 print("LSig Residuals:")
 print(data['LSig'].head(10))
 
-# 第2步: 使用LSig进行线性回归并预测
+# 使用LSig进行线性回归并预测
 linear_regressor_lsig = LinearRegression()
 linear_regressor_lsig.fit(X, data['LSig'])
 predicted_lsig = linear_regressor_lsig.predict(X)
@@ -361,11 +377,11 @@ data['Predicted_LSig'] = predicted_lsig
 print("Regression done LSig Residuals:")
 print(data['Predicted_LSig'].head(10))
 
-# 第3步: 假设误差符合正态分布，模拟分数误差
+# 模拟分数误差
 S = 1000  # 模拟次数
 simulated_scores = []
 
-std_dev = np.sqrt(np.exp(data['Predicted_LSig'] / 2))
+std_dev = np.sqrt(np.exp(data['Predicted_LSig']))
 
 for i in range(S):
     simulated_error = np.random.normal(
@@ -379,3 +395,142 @@ for i in range(S):
 simulated_scores = np.array(simulated_scores).T  # 转置以匹配原始数据的形状
 print(optimization_dataset['PredictedFantasyPoints'][:10])
 print(simulated_scores[:10])
+
+# 计算每个球员的平均模拟分数
+average_simulated_scores = np.mean(simulated_scores, axis=1)
+
+# 将平均模拟分数添加到原始数据集中
+optimization_dataset['AverageSimulatedScore'] = average_simulated_scores
+
+# 根据球员姓名计算每个球员的平均分数
+player_avg_scores = optimization_dataset.groupby('PLAYER_NAME')['AverageSimulatedScore'].mean().reset_index()
+
+# 将有平均分数的资料加入到nba_salaries中，确保包含球员姓名、薪水、预测的平均分数、位置
+nba_salaries = nba_salaries.merge(
+    player_avg_scores,
+    left_on='Player Name',
+    right_on='PLAYER_NAME',
+    how='left'
+).dropna(subset=['AverageSimulatedScore'])
+
+# 删除重复的球员记录
+nba_salaries = nba_salaries.drop_duplicates(subset=['Player Name'])
+
+# 确保保留需要的字段
+nba_salaries = nba_salaries[['Player Name', 'Salary', 'AverageSimulatedScore', 'Position']]
+print("nba_salary:")
+print(nba_salaries.head())
+# 过滤比赛日期为2022-12-22的球员
+games_details['GAME_DATE_EST'] = pd.to_datetime(games_details['GAME_DATE_EST'])
+filtered_games_details = games_details[games_details['GAME_DATE_EST'] == '2022-12-22']
+players_in_game = filtered_games_details['PLAYER_NAME'].unique()
+players_df = pd.DataFrame(players_in_game, columns=['Player Name'])
+
+# 合并两个数据集以获取球员薪水
+players_salaries = pd.merge(players_df, nba_salaries, left_on='Player Name', right_on='Player Name', how='left')
+players_salaries = players_salaries.dropna(subset=['Salary'])
+
+# 筛选在2022-12-22有比赛的球员
+nba_salaries_grouped = nba_salaries[nba_salaries['Player Name'].isin(players_salaries['Player Name'])]
+
+# 定义模拟次数和每组球员数量
+num_simulations = 10000
+num_players_per_team = 5
+
+# 进行模拟，随机选择球员并计算分数
+simulation_results = []
+simulation_player_names = []
+
+for _ in range(num_simulations):
+    selected_players = nba_salaries_grouped.sample(num_players_per_team, replace=False)  # 确保每次选择不重复球员
+    team_score = selected_players['AverageSimulatedScore'].sum()
+    simulation_results.append(team_score)
+    simulation_player_names.append(selected_players[['Player Name', 'Position', 'Salary', 'AverageSimulatedScore']].to_dict(orient='records'))
+
+# 绘制模拟结果的分布图
+plt.figure(figsize=(12, 6))
+sns.histplot(simulation_results, kde=True, bins=30, color='blue')
+plt.xlabel('Sum of Average Simulated Fantasy Points')
+plt.ylabel('Frequency')
+plt.title('Distribution of Team Scores from Simulations')
+plt.show()
+
+# 定义模拟次数和每组球员数量
+num_simulations = 10000
+num_players_per_team = 5
+
+# 进行模拟，随机选择球员并计算分数
+simulation_results = []
+simulation_player_names = []
+
+for _ in range(num_simulations):
+    selected_players = nba_salaries_grouped.sample(num_players_per_team, replace=False)  # 确保每次选择不重复球员
+    team_score = selected_players['AverageSimulatedScore'].sum()
+    team_salary = selected_players['Salary'].sum()
+    sf_count = (selected_players['Position'] == 'SF').sum()
+    unique_positions = selected_players['Position'].nunique()
+
+    if team_score >=50 and team_salary <= 25000000 and sf_count >= 2 and unique_positions == 4:
+        simulation_results.append((team_score, selected_players[['Player Name', 'Position', 'Salary', 'AverageSimulatedScore']].to_dict(orient='records')))
+
+# 绘制模拟结果的分布图
+if simulation_results:
+    # 输出模拟结果的一些统计信息
+    team_scores = [result[0] for result in simulation_results]
+    print(f"Mean team score: {np.mean(team_scores)}")
+    print(f"Standard deviation of team scores: {np.std(team_scores)}")
+    print(f"Minimum team score: {np.min(team_scores)}")
+    print(f"Maximum team score: {np.max(team_scores)}")
+
+    # 找到符合条件的最大总分组合
+    best_combination = max(simulation_results, key=lambda x: x[0])
+    print(f"最佳组合的总分: {best_combination[0]}")
+    print("球员详情:")
+    for player in best_combination[1]:
+        print(f"Player: {player['Player Name']}, Position: {player['Position']}, Salary: {player['Salary']}, PredictedFantasyPoints: {player['AverageSimulatedScore']}")
+
+    # 获取最佳组合中球员的名称、预测分数和实际分数
+    selected_player_names = [player['Player Name'] for player in best_combination[1]]
+    predicted_scores = [player['AverageSimulatedScore'] for player in best_combination[1]]
+    actual_scores = []
+
+    for player_name in selected_player_names:
+        actual_score = games_details[(games_details['PLAYER_NAME'] == player_name) & (games_details['GAME_DATE_EST'] == '2022-12-22')]['PTS'].values[0]
+        actual_scores.append(actual_score)
+
+    # 绘制条形图
+    x = np.arange(len(selected_player_names))  # 球员数量
+    width = 0.35  # 条形图的宽度
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bars1 = ax.bar(x - width/2, predicted_scores, width, label='Predicted Scores')
+    bars2 = ax.bar(x + width/2, actual_scores, width, label='Actual Scores')
+
+    # 添加标签和标题
+    ax.set_xlabel('Player Names')
+    ax.set_ylabel('Scores')
+    ax.set_title('Predicted vs Actual Scores for Selected Players')
+    ax.set_xticks(x)
+    ax.set_xticklabels(selected_player_names)
+    ax.legend()
+
+    # 在每个条形图上添加数值标签
+    for bar in bars1:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+    for bar in bars2:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+
+    plt.show()
+else:
+    print("没有符合条件的组合。")
+
